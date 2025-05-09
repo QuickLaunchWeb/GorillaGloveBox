@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="100px" height="100px" viewBox="0 0 100 100" version="1.1" xmlns="http://www.w3.org/2000/svg">
+    <title>Gorilla Icon</title>
+    <g stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <circle fill="#3F51B5" cx="50" cy="50" r="50"></circle>
+        <path d="M65,30 C70,25 85,35 85,45 C85,55 75,60 75,60 L70,70 C70,70 75,75 70,80 C65,85 55,80 55,80 L45,80 C45,80 35,85 30,80 C25,75 30,70 30,70 L25,60 C25,60 15,55 15,45 C15,35 30,25 35,30 C40,35 40,35 50,35 C60,35 60,35 65,30 Z" fill="#424242"></path>
+        <circle fill="#FFFFFF" cx="40" cy="45" r="5"></circle>
+        <circle fill="#FFFFFF" cx="60" cy="45" r="5"></circle>
+        <circle fill="#000000" cx="40" cy="45" r="2"></circle>
+        <circle fill="#000000" cx="60" cy="45" r="2"></circle>
+        <path d="M40,60 C40,60 45,65 50,65 C55,65 60,60 60,60" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"></path>
+    </g>
+</svg>
