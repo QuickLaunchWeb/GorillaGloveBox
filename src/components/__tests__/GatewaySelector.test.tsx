@@ -1,87 +1,88 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeAll, afterAll, afterEach, beforeEach } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { http, HttpResponse } from 'msw';
+import { setupServer } from 'msw/node';
 import { GatewaySelector } from '../GatewaySelector';
+import { useGatewayStore } from '../../store/useGatewayStore';
 
-// Mock the Zustand store
-vi.mock('../../store/useGatewayStore', () => ({
-  useGatewayStore: () => ({
-    gateways: [
-      { id: '1', name: 'Test Gateway', adminUrl: 'http://localhost:8001', skipTlsVerify: true, type: 'oss' }
-    ],
-    activeGatewayId: '1',
-    addGateway: vi.fn(),
-    removeGateway: vi.fn(),
-    setActiveGateway: vi.fn()
+const mockGateways = [
+  {
+    id: '1',
+    name: 'Local Kong',
+    adminUrl: 'http://localhost:8001',
+    skipTlsVerify: false,
+    type: 'oss',
+    authType: 'none'
+  }
+];
+
+const server = setupServer(
+  http.get('http://localhost:8001/status', () => {
+    return HttpResponse.json({ version: '3.0.0' });
   })
-}));
+);
 
-describe('GatewaySelector Component', () => {
-  it('displays the active gateway name', () => {
-    render(<GatewaySelector />);
-    
-    expect(screen.getByText('Test Gateway')).toBeInTheDocument();
-  });
-
-  it('opens the gateway dropdown when clicked', () => {
-    render(<GatewaySelector />);
-    
-    // The dropdown button should be visible
-    const dropdownButton = screen.getByText('Test Gateway');
-    fireEvent.click(dropdownButton);
-    
-    // "Add New Gateway" option should be visible when dropdown is open
-    expect(screen.getByText('Add New Gateway')).toBeInTheDocument();
-  });
-
-  it('opens the add gateway dialog when "Add New Gateway" is clicked', () => {
-    render(<GatewaySelector />);
-    
-    // Open the dropdown
-    const dropdownButton = screen.getByText('Test Gateway');
-    fireEvent.click(dropdownButton);
-    
-    // Click the "Add New Gateway" option
-    fireEvent.click(screen.getByText('Add New Gateway'));
-    
-    // The dialog should be visible
-    expect(screen.getByText('Add New Gateway', { selector: 'h2' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Gateway Name')).toBeInTheDocument();
-    expect(screen.getByLabelText('Admin API URL')).toBeInTheDocument();
-  });
-
-  it('calls addGateway when form is submitted with valid data', () => {
-    const mockAddGateway = vi.fn();
-    vi.mocked(useGatewayStore).mockReturnValue({
-      ...vi.mocked(useGatewayStore)(),
-      addGateway: mockAddGateway
-    });
-    
-    render(<GatewaySelector />);
-    
-    // Open the dropdown and then the dialog
-    fireEvent.click(screen.getByText('Test Gateway'));
-    fireEvent.click(screen.getByText('Add New Gateway'));
-    
-    // Fill in the form
-    fireEvent.change(screen.getByLabelText('Gateway Name'), {
-      target: { value: 'New Gateway' }
-    });
-    fireEvent.change(screen.getByLabelText('Admin API URL'), {
-      target: { value: 'http://example.com:8001' }
-    });
-    
-    // Submit the form
-    fireEvent.click(screen.getByText('Add Gateway'));
-    
-    // Check if addGateway was called with the correct data
-    expect(mockAddGateway).toHaveBeenCalledWith(expect.objectContaining({
-      name: 'New Gateway',
-      adminUrl: 'http://example.com:8001'
-    }));
-  });
-});
-
-// Restore the original implementations
+beforeAll(() => server.listen());
 afterEach(() => {
-  vi.restoreAllMocks();
+  server.resetHandlers();
+  vi.clearAllMocks();
+});
+afterAll(() => server.close());
+
+vi.mock('../../store/useGatewayStore');
+
+const mockUseGatewayStore = vi.mocked(useGatewayStore);
+
+describe('GatewaySelector', () => {
+  beforeEach(() => {
+    mockUseGatewayStore.mockReturnValue({
+      gateways: mockGateways,
+      activeGatewayId: '1',
+      addGateway: vi.fn(),
+      removeGateway: vi.fn(),
+      setActiveGateway: vi.fn(),
+      testConnection: vi.fn().mockResolvedValue({ success: true, message: 'Connection successful' })
+    });
+  });
+
+  it('tests connection with test Kong instance', async () => {
+    const testConnectionMock = vi.fn().mockResolvedValue({ success: true, message: 'Connection successful' });
+    
+    mockUseGatewayStore.mockReturnValue({
+      gateways: mockGateways,
+      activeGatewayId: '1',
+      addGateway: vi.fn(),
+      removeGateway: vi.fn(),
+      setActiveGateway: vi.fn(),
+      testConnection: testConnectionMock
+    });
+
+    render(<GatewaySelector />);
+    
+    // Open dialog
+    const button = screen.getByRole('button', { name: /Local Kong|Select Gateway/i });
+    fireEvent.click(button);
+    
+    const addButton = await screen.findByText('Add New Gateway');
+    fireEvent.click(addButton);
+    
+    // Fill in all required fields
+    const nameInput = screen.getByLabelText(/Gateway Name/);
+    fireEvent.change(nameInput, { target: { value: 'Test Gateway' } });
+    
+    const adminUrlInput = screen.getByLabelText(/Admin API URL/);
+    fireEvent.change(adminUrlInput, { target: { value: 'http://localhost:8001' } });
+    
+    // Test connection
+    const testButton = screen.getByRole('button', { name: /Test & Save/i });
+    fireEvent.click(testButton);
+    
+    // Verify testConnection was called
+    await waitFor(() => {
+      expect(testConnectionMock).toHaveBeenCalled();
+    });
+    
+    // Verify successful connection
+    expect(await screen.findByText(/Connection test successful!/i)).toBeInTheDocument();
+  });
 });

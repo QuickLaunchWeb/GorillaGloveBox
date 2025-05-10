@@ -1,100 +1,179 @@
-import { useState } from 'react';
-import { 
-  Box, 
-  Button, 
-  Menu, 
-  MenuItem, 
-  Typography, 
-  TextField, 
-  Dialog, 
-  DialogTitle, 
-  DialogContent, 
-  DialogActions, 
-  FormControlLabel, 
-  Checkbox,
-  Select,
-  InputLabel,
+import React, { useState } from 'react';
+import type { MouseEvent, ChangeEvent } from 'react';
+import { useSnackbar } from 'notistack';
+import {
+  Box,
+  Button,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  TextField,
+  FormControlLabel,
+  Switch,
+  Menu,
+  MenuItem,
   FormControl,
-  Divider,
-  SelectChangeEvent
+  InputLabel,
+  Select,
+  Divider
 } from '@mui/material';
-import AddIcon from '@mui/icons-material/Add';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 import DeleteIcon from '@mui/icons-material/Delete';
-import { useGatewayStore, Gateway } from '../store/useGatewayStore';
+import AddIcon from '@mui/icons-material/Add';
+import { useGatewayStore, type AuthType } from '../store/useGatewayStore';
+import { testKongConnection } from '@/utils/kongConnection';
+
+type GatewayFormState = {
+  name: string;
+  adminUrl: string;
+  authType: AuthType;
+  username?: string;
+  password?: string;
+  token?: string;
+  skipTlsVerify: boolean;
+};
 
 export const GatewaySelector = () => {
   const { gateways, activeGatewayId, addGateway, removeGateway, setActiveGateway } = useGatewayStore();
-  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [newGateway, setNewGateway] = useState<Omit<Gateway, 'id'>>({
+  const { enqueueSnackbar } = useSnackbar();
+  const [anchorEl, setAnchorEl] = React.useState<HTMLElement | null>(null);
+  const [dialogOpen, setDialogOpen] = React.useState(false);
+  const [newGateway, setNewGateway] = useState<GatewayFormState>({
     name: '',
     adminUrl: '',
-    username: '',
-    password: '',
+    authType: 'none',
     skipTlsVerify: true,
-    type: 'oss'
   });
   
-  const activeGateway = gateways.find(g => g.id === activeGatewayId);
-  
-  const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+  const [loading, setLoading] = useState(false);
+
+  const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
     setAnchorEl(event.currentTarget);
   };
-  
+
   const handleClose = () => {
     setAnchorEl(null);
   };
-  
+
   const handleOpenDialog = () => {
     setDialogOpen(true);
     handleClose();
   };
-  
+
   const handleCloseDialog = () => {
     setDialogOpen(false);
   };
-  
-  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value, checked } = e.target;
-    setNewGateway({
-      ...newGateway,
-      [name]: name === 'skipTlsVerify' ? checked : value
-    });
+
+  const handleFormChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const { name, value, type, checked } = e.target;
+    setNewGateway((prev: GatewayFormState) => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
   };
-  
-  const handleSelectChange = (e: SelectChangeEvent) => {
-    const { name, value } = e.target;
-    setNewGateway({
-      ...newGateway,
-      [name as string]: value
-    });
+
+  const handleAuthTypeChange = (e: ChangeEvent<{ value: unknown }>) => {
+    setNewGateway((prev: GatewayFormState) => ({
+      ...prev,
+      authType: e.target.value as AuthType,
+    }));
   };
-  
-  const handleAddGateway = () => {
-    addGateway(newGateway);
-    handleCloseDialog();
-    
-    // Reset form
-    setNewGateway({
-      name: '',
-      adminUrl: '',
-      username: '',
-      password: '',
-      skipTlsVerify: true,
-      type: 'oss'
-    });
-  };
-  
+
   const handleSelectGateway = (id: string) => {
     setActiveGateway(id);
     handleClose();
   };
-  
-  const handleRemoveGateway = (id: string, e: React.MouseEvent) => {
+
+  const handleAddGateway = () => {
+    addGateway(newGateway);
+    handleCloseDialog();
+    setNewGateway({
+      name: '',
+      adminUrl: '',
+      authType: 'none',
+      skipTlsVerify: true,
+    });
+  };
+
+  const handleTestAndSave = async () => {
+    console.log('Test & Save clicked'); // Debug log
+    if (!newGateway.name || !newGateway.adminUrl) {
+      console.log('Validation failed - missing name or URL');
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      console.log('Testing connection to:', newGateway.adminUrl);
+      const result = await testKongConnection(
+        newGateway.adminUrl,
+        newGateway.skipTlsVerify
+      );
+      console.log('Connection result:', result);
+      
+      if (result.success) {
+        enqueueSnackbar('Connection test successful!', { variant: 'success' });
+        console.log('Adding gateway:', newGateway);
+        handleAddGateway();
+      } else {
+        enqueueSnackbar(`Connection failed: ${result.message}`, { variant: 'error' });
+      }
+    } catch (error) {
+      console.error('Test connection error:', error);
+      enqueueSnackbar('An unexpected error occurred', { variant: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRemoveGateway = (id: string, e: MouseEvent) => {
     e.stopPropagation();
     removeGateway(id);
   };
+
+  const renderAuthFields = () => {
+    switch(newGateway.authType) {
+      case 'basic-auth':
+        return (
+          <>
+            <TextField
+              label="Username"
+              name="username"
+              value={newGateway.username || ''}
+              onChange={handleFormChange}
+              fullWidth
+              required
+            />
+            <TextField
+              label="Password"
+              name="password"
+              type="password"
+              value={newGateway.password || ''}
+              onChange={handleFormChange}
+              fullWidth
+              required
+            />
+          </>
+        );
+      case 'key-auth':
+        return (
+          <TextField
+            label="API Key"
+            name="token"
+            value={newGateway.token || ''}
+            onChange={handleFormChange}
+            fullWidth
+            required
+          />
+        );
+      default:
+        return null;
+    }
+  };
+
+  const activeGateway = gateways.find(g => g.id === activeGatewayId);
 
   return (
     <>
@@ -119,6 +198,10 @@ export const GatewaySelector = () => {
             selected={gateway.id === activeGatewayId}
           >
             {gateway.name} ({gateway.adminUrl})
+            <DeleteIcon 
+              sx={{ ml: 1, fontSize: 16, cursor: 'pointer' }} 
+              onClick={(e: MouseEvent) => handleRemoveGateway(gateway.id, e)} 
+            />
           </MenuItem>
         ))}
         {gateways.length > 0 && <Divider />}
@@ -128,7 +211,6 @@ export const GatewaySelector = () => {
         </MenuItem>
       </Menu>
       
-      {/* Add New Gateway Dialog */}
       <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
         <DialogTitle>Add New Gateway</DialogTitle>
         <DialogContent>
@@ -150,57 +232,54 @@ export const GatewaySelector = () => {
               fullWidth
               required
             />
+            
             <FormControl fullWidth>
-              <InputLabel id="gateway-type-label">Gateway Type</InputLabel>
+              <InputLabel id="auth-type-label">Authentication Type</InputLabel>
               <Select
-                labelId="gateway-type-label"
-                name="type"
-                value={newGateway.type}
-                label="Gateway Type"
-                onChange={handleSelectChange}
+                labelId="auth-type-label"
+                id="auth-type-select"
+                value={newGateway.authType}
+                onChange={handleAuthTypeChange}
+                label="Authentication Type"
               >
-                <MenuItem value="oss">Kong OSS</MenuItem>
-                <MenuItem value="enterprise">Kong Enterprise</MenuItem>
+                <MenuItem value="none">None</MenuItem>
+                <MenuItem value="basic-auth">Basic Auth</MenuItem>
+                <MenuItem value="key-auth">Key Auth</MenuItem>
               </Select>
             </FormControl>
-            <Typography variant="body2" color="text.secondary">
-              Authentication (Optional)
-            </Typography>
-            <TextField
-              label="Username"
-              name="username"
-              value={newGateway.username || ''}
-              onChange={handleFormChange}
-              fullWidth
-            />
-            <TextField
-              label="Password"
-              name="password"
-              type="password"
-              value={newGateway.password || ''}
-              onChange={handleFormChange}
-              fullWidth
-            />
+            
+            {renderAuthFields()}
+            
             <FormControlLabel
               control={
-                <Checkbox
+                <Switch 
                   checked={newGateway.skipTlsVerify}
-                  onChange={handleFormChange}
-                  name="skipTlsVerify"
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => 
+                    setNewGateway({...newGateway, skipTlsVerify: e.target.checked})
+                  }
                 />
               }
-              label="Skip TLS Verification (for self-signed certificates)"
+              label="Skip TLS Verification"
             />
           </Box>
         </DialogContent>
         <DialogActions>
+          {loading && <CircularProgress size={24} sx={{ mr: 2 }} />}
           <Button onClick={handleCloseDialog}>Cancel</Button>
           <Button 
-            onClick={handleAddGateway}
             variant="contained" 
-            disabled={!newGateway.name || !newGateway.adminUrl}
+            onClick={handleAddGateway}
+            disabled={!newGateway.name || !newGateway.adminUrl || loading}
           >
-            Add Gateway
+            Save Connection
+          </Button>
+          <Button 
+            variant="contained" 
+            color="success"
+            onClick={handleTestAndSave}
+            disabled={!newGateway.name || !newGateway.adminUrl || loading}
+          >
+            Test & Save
           </Button>
         </DialogActions>
       </Dialog>
